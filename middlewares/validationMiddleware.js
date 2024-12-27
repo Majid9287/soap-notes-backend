@@ -1,3 +1,4 @@
+//middlewares/validationMiddleware.js
 import AppError from '../utils/appError.js'
 
 export const validateSchema = (Schema) => (req, res, next) => {

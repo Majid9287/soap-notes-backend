@@ -45,3 +45,20 @@ const PORT = process.env.PORT || 8080 ;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+// Audio Input (Using File Upload):
+
+
+// "audioFile=audio file" \
+// "type=Psychotherapy Session" \
+//  "input_type=audio" \
+//  "patientName=John Doe" \
+//  "therapistName=Dr. Smith"
+// Text Input:
+
+//   "type": "Psychotherapy Session",
+//   "input_type": "text",
+//   "data": "Patient reported feeling better today.",
+//   "patientName": "John Doe",
+//   "therapistName": "Dr. Smith"
+// }'

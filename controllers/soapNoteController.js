@@ -42,6 +42,7 @@ export async function createSOAPNote(req, res) {
       if (!req.file) {
         return sendErrorResponse(res, "Audio file is required for audio input");
       }
+      console.log(req.file);
       const audioBuffer = req.file.buffer; // Access the uploaded file's buffer
       data = await transcribeAudio(audioBuffer);
     } else {
@@ -53,7 +54,7 @@ export async function createSOAPNote(req, res) {
     }
 
     // Structure text into SOAP format
-    const soapNote = await structureSOAPNote(data, type);
+    const soapNote = await structureSOAPNote(data, type, patientName, therapistName);
 
     // Save SOAP note to database
     const newSoapNote = await SoapNote.create({
@@ -63,10 +64,10 @@ export async function createSOAPNote(req, res) {
       therapistName,
       ...soapNote,
     });
-
-    sendSuccessResponse(res, "SOAP note created successfully", newSoapNote);
+// Respond with user data
+    sendSuccessResponse(res,newSoapNote, "SOAP note created successfully");
   } catch (error) {
-    sendErrorResponse(res, "Failed to create SOAP note", error);
+    sendErrorResponse(res,{ error},"Failed to create SOAP note");
   }
 }
 

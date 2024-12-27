@@ -7,12 +7,21 @@ import AppError from '../utils/appError.js';
 
 export class RateLimitService {
  
+ 
   static async validateApiKey(key) {
-    const apiKey = await ApiKey.findOne({ key });
+    const apiKey = await ApiKey.findOne({ key }).populate('userId');
     if (!apiKey) {
       throw new AppError('Invalid API key', 401);
     }
-    return apiKey;
+    
+    // Return both the apiKey and user information
+    return {
+      apiKey,
+      user: {
+        ...apiKey.userId.toObject(),
+        id: apiKey.userId._id // Ensure id is accessible
+      }
+    };
   }
 
   

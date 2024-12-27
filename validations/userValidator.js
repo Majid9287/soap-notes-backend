@@ -1,3 +1,4 @@
+//validations/userValidator.js
 import Joi from 'joi';
 
 export const userValidationSchema = Joi.object({
@@ -30,13 +31,5 @@ export const userValidationSchema = Joi.object({
             'any.required': 'Please provide a password.',
             'string.min': 'Password must be at least 8 characters long.',
             'string.empty': 'Password cannot be empty.',
-        }),
-    role: Joi.string()
-        .valid('admin', 'supervisor', 'agent')
-        .default('agent'),
-    organization: Joi.string()
-        .optional()
-        .allow('', null),
-    isZingtreeAgent: Joi.boolean()
-        .default(false)
+        })
 });

@@ -1,7 +1,23 @@
 import rateLimit from 'express-rate-limit'
 import AppError from './appError.js'
 import mongoose from 'mongoose'
+import { rateLimitConfig } from '../config/rateLimit.js'
+export const extractApiKey = async (req) => {
+    // First check header
+    const headerKey = req.header(rateLimitConfig.headers.apiKey);
+    if (headerKey) {
+      return headerKey;
+    }
+  
+    // Then, check the URL for the API key using the defined pattern
+  const match = req.originalUrl.match(rateLimitConfig.urlPattern);
 
+  if (match && match[1]) {
+    return match[1]; // If the pattern matches, return the API key found in the URL
+  }
+  
+    throw new AppError('Invalid API key', 401);
+  };
 
 export const checkReferenceId = async (Model, foreignKey, next) => {
     const referenceKey = await mongoose.model(Model).findById(foreignKey)

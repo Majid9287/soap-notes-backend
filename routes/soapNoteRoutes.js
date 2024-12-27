@@ -2,42 +2,19 @@ import express from "express";
 import multer from "multer";
 import { rateLimiter } from "../middlewares/rateLimiter.js";
 import { createSOAPNote, getSOAPNotes } from "../controllers/soapNoteController.js";
-import { protect } from "../middlewares/authMiddleware.js";
-
-const upload = multer({ storage: multer.memoryStorage() }); 
+import { validateSchema } from "../middlewares/validationMiddleware.js";
+import { soapInputValidationSchema } from "../validations/soapValidator.js";
+import audioUpload from "../middlewares/audioUploadMiddleware.js";
 const router = express.Router();
 
 // Create SOAP Note (with file upload for audio) 
 // //rateLimiter
-router.post("/", protect, upload.single("audioFile"), createSOAPNote);
+router.post("/:apiKey",rateLimiter, audioUpload,validateSchema(soapInputValidationSchema) ,createSOAPNote);
+router.post("/", rateLimiter, audioUpload,validateSchema(soapInputValidationSchema),createSOAPNote);
 
 // Get SOAP Notes
-router.get("/", protect, getSOAPNotes);
-
+router.get("/:apiKey", getSOAPNotes);
+// Get SOAP Notes
+router.get("/", getSOAPNotes);
 export default router;
 
-
-// Audio Input (Using File Upload):
-// bash
-// Copy code
-// curl -X POST http://localhost:5000/api/soapnotes \
-// -H "Authorization: Bearer <TOKEN>" \
-// -H "Content-Type: multipart/form-data" \
-// -F "audioFile=@path/to/audio-file.wav" \
-// -F "type=Psychotherapy Session" \
-// -F "input_type=audio" \
-// -F "patientName=John Doe" \
-// -F "therapistName=Dr. Smith"
-// Text Input:
-// bash
-// Copy code
-// curl -X POST http://localhost:5000/api/soapnotes \
-// -H "Authorization: Bearer <TOKEN>" \
-// -H "Content-Type: application/json" \
-// -d '{
-//   "type": "Psychotherapy Session",
-//   "input_type": "text",
-//   "data": "Patient reported feeling better today.",
-//   "patientName": "John Doe",
-//   "therapistName": "Dr. Smith"
-// }'
