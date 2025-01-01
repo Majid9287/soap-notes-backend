@@ -9,8 +9,8 @@ const router = express.Router();
 
 // Create SOAP Note (with file upload for audio) 
 // //rateLimiter
-router.post("/:apiKey",rateLimiter, audioUpload,validateSchema(soapInputValidationSchema) ,createSOAPNote);
-router.post("/", rateLimiter, audioUpload,validateSchema(soapInputValidationSchema),createSOAPNote);
+router.post("/:apiKey",rateLimiter,audioUpload ,createSOAPNote);
+router.post("/", rateLimiter,audioUpload,createSOAPNote);
 
 // Get SOAP Notes
 router.get("/:apiKey", getSOAPNotes);

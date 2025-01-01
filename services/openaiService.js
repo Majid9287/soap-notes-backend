@@ -180,7 +180,8 @@ export async function structureSOAPNote(
   if (!text) {
     throw new AppError("SOAP note text not provided", 400);
   }
-
+console.log(text,
+  type)
   try {
     // Filter out patient's personal information before sending to OpenAI
     let sanitizedText = text;
@@ -399,8 +400,7 @@ Plan:
       const match = structuredText.match(regex);
       sections[section] = match ? match[1].trim() : "";
     }
-
-    // Return the structured SOAP note
+    console.log(sections)   // Return the structured SOAP note
     return {
       subjective: sections.subjective,
       objective: sections.objective,

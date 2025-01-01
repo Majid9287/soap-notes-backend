@@ -1,6 +1,12 @@
-import { transcribeAudio, structureSOAPNote } from "../services/openaiService.js";
+import {
+  transcribeAudio,
+  structureSOAPNote,
+} from "../services/openaiService.js";
 import SoapNote from "../models/soapNote.js";
-import { sendSuccessResponse, sendErrorResponse } from "../utils/responseHandler.js";
+import {
+  sendSuccessResponse,
+  sendErrorResponse,
+} from "../utils/responseHandler.js";
 
 const soapNoteTypes = [
   "Psychotherapy Session",
@@ -26,7 +32,7 @@ export async function createSOAPNote(req, res) {
     const { type, input_type } = req.body;
     const { patientName, therapistName } = req.query;
     const userId = req.user.id;
-
+   console.log(req.body)
     // Validate input
     if (!type || !soapNoteTypes.includes(type)) {
       return sendErrorResponse(res, "Invalid SOAP note type");
@@ -42,10 +48,11 @@ export async function createSOAPNote(req, res) {
       if (!req.file) {
         return sendErrorResponse(res, "Audio file is required for audio input");
       }
-
+      console.log("test3456789");
       const audioBuffer = req.file.buffer;
+      console.log("file", req.file);
       const transcriptionResult = await transcribeAudio(audioBuffer);
-      
+
       if (!transcriptionResult || !transcriptionResult.transcription) {
         return sendErrorResponse(res, "Failed to transcribe audio");
       }
@@ -66,9 +73,9 @@ export async function createSOAPNote(req, res) {
 
     // Structure text into SOAP format
     const soapNote = await structureSOAPNote(
-      transcribedText, 
-      type, 
-      patientName, 
+      transcribedText,
+      type,
+      patientName,
       therapistName
     );
 
@@ -86,27 +93,22 @@ export async function createSOAPNote(req, res) {
           originalFileName: req.file.originalname,
           fileSize: req.file.size,
           mimeType: req.file.mimetype,
-          transcribedAt: new Date()
-        }
-      })
+          transcribedAt: new Date(),
+        },
+      }),
     });
 
     sendSuccessResponse(
-      res, 
-      {
-        soapNote: newSoapNote,
-        transcriptionDetails: input_type === "audio" ? {
-          wordCount: transcribedText.split(' ').length,
-          characters: transcribedText.length,
-        } : null
-      }, 
+      res,
+
+      newSoapNote,
+
       "SOAP note created successfully"
     );
-
   } catch (error) {
     console.error("SOAP Note Creation Error:", error);
     sendErrorResponse(
-      res, 
+      res,
       error.message || "Failed to create SOAP note",
       error.code || 500
     );
