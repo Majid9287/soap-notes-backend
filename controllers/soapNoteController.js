@@ -25,7 +25,7 @@ export async function createSOAPNote(req, res) {
   try {
     const { type, input_type } = req.body;
     const { patientName, therapistName } = req.query;
-    const userId  = req.user.id; // From auth middleware
+    const userId = req.user.id;
 
     // Validate input
     if (!type || !soapNoteTypes.includes(type)) {
@@ -35,42 +35,83 @@ export async function createSOAPNote(req, res) {
       return sendErrorResponse(res, "Invalid input type");
     }
 
-    let data;
+    let transcribedText;
 
     // Handle audio or text input
     if (input_type === "audio") {
       if (!req.file) {
         return sendErrorResponse(res, "Audio file is required for audio input");
       }
-      console.log(req.file);
-      const audioBuffer = req.file.buffer; // Access the uploaded file's buffer
-      data = await transcribeAudio(audioBuffer);
+
+      const audioBuffer = req.file.buffer;
+      const transcriptionResult = await transcribeAudio(audioBuffer);
+      
+      if (!transcriptionResult || !transcriptionResult.transcription) {
+        return sendErrorResponse(res, "Failed to transcribe audio");
+      }
+
+      transcribedText = transcriptionResult.transcription;
+
+      // Log transcription details (optional)
+      console.log("Transcription confidence:", transcriptionResult.confidence);
+      console.log("Word count:", transcriptionResult.words?.length || 0);
+      console.log("text:", transcribedText);
     } else {
       const { text } = req.body;
       if (!text) {
-        return sendErrorResponse(res, "Data is required for text input");
+        return sendErrorResponse(res, "Text is required for text input");
       }
-      data = text;
+      transcribedText = text;
     }
 
     // Structure text into SOAP format
-    const soapNote = await structureSOAPNote(data, type, patientName, therapistName);
+    const soapNote = await structureSOAPNote(
+      transcribedText, 
+      type, 
+      patientName, 
+      therapistName
+    );
 
     // Save SOAP note to database
     const newSoapNote = await SoapNote.create({
-      text:data,
+      text: transcribedText,
       userId,
       patientName,
       therapistName,
+      inputType: input_type,
       ...soapNote,
+      // Add metadata for audio transcriptions
+      ...(input_type === "audio" && {
+        audioMetadata: {
+          originalFileName: req.file.originalname,
+          fileSize: req.file.size,
+          mimeType: req.file.mimetype,
+          transcribedAt: new Date()
+        }
+      })
     });
-// Respond with user data
-    sendSuccessResponse(res,newSoapNote, "SOAP note created successfully");
+
+    sendSuccessResponse(
+      res, 
+      {
+        soapNote: newSoapNote,
+        transcriptionDetails: input_type === "audio" ? {
+          wordCount: transcribedText.split(' ').length,
+          characters: transcribedText.length,
+        } : null
+      }, 
+      "SOAP note created successfully"
+    );
+
   } catch (error) {
-    sendErrorResponse(res,{ error},"Failed to create SOAP note");
+    console.error("SOAP Note Creation Error:", error);
+    sendErrorResponse(
+      res, 
+      error.message || "Failed to create SOAP note",
+      error.code || 500
+    );
   }
 }
-
 // Get SOAP Notes
 export async function getSOAPNotes(req, res) {
   try {

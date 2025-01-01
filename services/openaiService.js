@@ -1,69 +1,210 @@
+// transcriptionService.js
+import { SpeechClient } from "@google-cloud/speech";
 import OpenAI from "openai"; // Import the new openai package
-import fs from "fs";
 import config from "../config/config.js";
+import fs from "fs";
+import path from "path";
+import os from "os";
+import { promisify } from "util";
+import { exec } from "child_process";
+import ffmpeg from "fluent-ffmpeg";
+import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
+import ffprobeInstaller from "@ffprobe-installer/ffprobe";
 import logger from "../utils/logger.js";
-
-import path from "path"; // Import the path module to handle paths
-import os from "os"; // Import the os module to get the system temp directory
-// Initialize OpenAI client with the API key
+import AppError from "../utils/appError.js";
+// Set ffmpeg paths
+ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+ffmpeg.setFfprobePath(ffprobeInstaller.path);
 const openai = new OpenAI({
   apiKey: config.openaiApiKey,
 });
+const client = new SpeechClient({
+  credentials: JSON.parse(
+    Buffer.from(
+      process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64,
+      "base64"
+    ).toString("utf-8")
+  ),
+});
 
-// Transcribe audio file to text
-export async function transcribeAudio(audioBuffer) {
-    try {
-      // Use the system's temporary directory to store the file
-      const tempDir = os.tmpdir(); // This will get the correct temp directory for your OS
-      const tempFilePath = path.join(tempDir, `${Date.now()}.wav`);
-  
-      // Ensure the directory exists (optional, for extra safety)
-      if (!fs.existsSync(tempDir)) {
-        fs.mkdirSync(tempDir, { recursive: true });
-      }
-  
-      // Write the audio buffer to a temporary file
-      await fs.promises.writeFile(tempFilePath, audioBuffer);
-  
-      // Use OpenAI's Whisper model for transcription
-      const transcription = await openai.audio.transcriptions.create({
-        model: "whisper-1", // Whisper model for transcriptions
-        file: fs.createReadStream(tempFilePath),
+// Promisify ffmpeg operations
+const getAudioMetadata = (filePath) => {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(filePath, (err, metadata) => {
+      if (err) return reject(err);
+      const audioStream = metadata.streams.find(
+        (stream) => stream.codec_type === "audio"
+      );
+      if (!audioStream) return reject(new Error("No audio stream found"));
+
+      resolve({
+        encoding: audioStream.codec_name.toUpperCase(),
+        sampleRateHertz: parseInt(audioStream.sample_rate),
+        channels: audioStream.channels,
       });
-  
-      // Clean up the temporary file
-      await fs.promises.unlink(tempFilePath);
-  
-      // Return the transcribed text
-      return transcription.text;
+    });
+  });
+};
+
+const normalizeAudio = (inputPath, outputPath) => {
+  return new Promise((resolve, reject) => {
+    ffmpeg(inputPath)
+      .toFormat("wav")
+      .audioChannels(1)
+      .audioFrequency(16000)
+      .on("end", resolve)
+      .on("error", reject)
+      .save(outputPath);
+  });
+};
+
+export class AudioTranscriptionError extends Error {
+  constructor(message, code, details) {
+    super(message);
+    this.name = "AudioTranscriptionError";
+    this.code = code;
+    this.details = details;
+  }
+}
+
+export async function transcribeAudio(audioBuffer, options = {}) {
+  let tempFilePath = null;
+  let normalizedFilePath = null;
+
+  try {
+    // Create temp directory if it doesn't exist
+    const tempDir = path.join(os.tmpdir(), "audio-transcriptions");
+    await fs.promises.mkdir(tempDir, { recursive: true });
+
+    // Save original audio
+    tempFilePath = path.join(tempDir, `original_${Date.now()}.audio`);
+    await fs.promises.writeFile(tempFilePath, audioBuffer);
+
+    // Get audio metadata
+    let metadata;
+    try {
+      metadata = await getAudioMetadata(tempFilePath);
     } catch (error) {
-      logger.error("Error transcribing audio:", error);
+      throw new AudioTranscriptionError(
+        "Invalid audio file format",
+        "INVALID_AUDIO_FORMAT",
+        error.message
+      );
+    }
+
+    // Normalize audio
+    normalizedFilePath = path.join(tempDir, `normalized_${Date.now()}.wav`);
+    await normalizeAudio(tempFilePath, normalizedFilePath);
+
+    // Read normalized audio
+    const normalizedBuffer = await fs.promises.readFile(normalizedFilePath);
+    const audioContent = normalizedBuffer.toString("base64");
+
+    // Build recognition config
+    const config = {
+      encoding: "LINEAR16",
+      sampleRateHertz: 16000,
+      languageCode: options.languageCode || "en-US",
+      enableWordTimeOffsets: true,
+      enableAutomaticPunctuation: true,
+      useEnhanced: true,
+      audioChannelCount: 1,
+    };
+
+    // Adjust model based on audio quality
+    if (metadata.sampleRateHertz < 16000) {
+      config.model = "phone_call";
+    }
+
+    // Perform transcription
+    const [response] = await client.recognize({
+      audio: { content: audioContent },
+      config,
+    });
+
+    if (!response.results?.length) {
+      throw new AudioTranscriptionError(
+        "No transcription results available",
+        "NO_TRANSCRIPTION_RESULTS",
+        null
+      );
+    }
+
+    // Format response
+    const result = {
+      transcription: response.results
+        .map((result) => result.alternatives?.[0]?.transcript || "")
+        .join("\n")
+        .trim(),
+      confidence: response.results[0].alternatives[0].confidence,
+      words: response.results.flatMap(
+        (result) => result.alternatives[0].words || []
+      ),
+    };
+
+    return result;
+  } catch (error) {
+    if (error instanceof AudioTranscriptionError) {
       throw error;
     }
+
+    throw new AudioTranscriptionError(
+      "Transcription failed",
+      "TRANSCRIPTION_ERROR",
+      error.message
+    );
+  } finally {
+    // Cleanup temporary files
+    const filesToDelete = [tempFilePath, normalizedFilePath]
+      .filter(Boolean)
+      .filter((file) => fs.existsSync(file));
+
+    await Promise.all(
+      filesToDelete.map((file) =>
+        fs.promises
+          .unlink(file)
+          .catch((err) =>
+            console.error(`Failed to delete temporary file ${file}:`, err)
+          )
+      )
+    );
   }
-  const soapNoteTypes = [
-    "Psychotherapy Session",
-    "Clinical Social Worker",
-    "Psychiatrist Session",
-    "Chiropractor",
-    "Pharmacy",
-    "Nurse Practitioner",
-    "Massage Therapy",
-    "Occupational Therapy",
-    "Veterinary",
-    "Podiatry",
-    "Physical Therapy",
-    "Speech Therapy (SLP)",
-    "Registered Nurse",
-    "Acupuncture",
-    "Dentistry",
-  ];
-  
-  export async function structureSOAPNote(text, type, patientName = null, therapistName = null) {
-    try {
-      // Define specific instructions based on the type of session
+}
+
+export async function structureSOAPNote(
+  text,
+  type,
+  patientName = null,
+  therapistName = null
+) {
+  if (!text) {
+    throw new AppError("SOAP note text not provided", 400);
+  }
+
+  try {
+    // Filter out patient's personal information before sending to OpenAI
+    let sanitizedText = text;
+    if (patientName) {
+      // Replace patient name with generic reference
+      const nameRegex = new RegExp(patientName, "gi");
+      sanitizedText = sanitizedText.replace(nameRegex, "patient");
+    }
+
+    // Filter out potential personal identifiers
+    sanitizedText = sanitizedText
+      // Remove potential phone numbers
+      .replace(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, "[PHONE]")
+      // Remove potential email addresses
+      .replace(
+        /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
+        "[EMAIL]"
+      )
+      // Remove potential dates of birth
+      .replace(/\b\d{2}[-/]\d{2}[-/]\d{4}\b/g, "[DOB]")
+      // Remove potential SSN
+      .replace(/\b\d{3}[-]?\d{2}[-]?\d{4}\b/g, "[SSN]");
       let typeSpecificInstructions = "";
-  
+
       switch (type) {
         case "Psychotherapy Session":
           typeSpecificInstructions = `
@@ -178,84 +319,96 @@ export async function transcribeAudio(audioBuffer) {
           break;
       }
   
-      // Build the base prompt with clear instructions
-      let prompt = `
-        You are a professional medical assistant tasked with structuring the following information into a SOAP note. 
-        The SOAP note should be clear, concise, and highly professional. Ensure that each section (Subjective, Objective, Assessment, Plan) is distinct and well-defined.
-        If the patient's name and therapist's name are provided, please include them at the beginning of the note.
-  
-        **Type of Session**: ${type}
-        **Instructions**: ${typeSpecificInstructions}
-  
-        Text for structuring: 
-        "${text}"
-  
-        The SOAP note should include the following sections:
-  
-        1. **Subjective**: 
-           - This section should include the patient's description of their condition, symptoms, and any relevant history. 
-           - Include any complaints, pain descriptions, or concerns expressed by the patient. 
-           - Use the patient's own words when possible.
-  
-        2. **Objective**: 
-           - Include measurable and observable data such as physical exam findings, test results, and other objective information. 
-           - Provide clear, factual data such as vital signs, physical exam findings, and lab results.
-  
-        3. **Assessment**: 
-           - Provide a clinical interpretation of the subjective and objective findings. 
-           - Include a diagnosis or differential diagnosis based on the information provided. 
-           - Discuss any relevant medical history or risk factors that may influence the diagnosis.
-  
-        4. **Plan**: 
-           - Outline the treatment plan, next steps, and any follow-up instructions. 
-           - Include recommendations for therapy, medications, referrals, or other interventions. 
-           - Provide clear action steps and timelines for follow-up care.
-  
-        If the patient’s name and therapist’s name are provided, please include them at the beginning of the SOAP note.
-  
-        **Patient Name**: ${patientName ? patientName : "Not Provided"}
-        **Therapist Name**: ${therapistName ? therapistName : "Not Provided"}
-  
-        Please structure the note into the following format:
-        Subjective:
-        (Your response here)
-  
-        Objective:
-        (Your response here)
-  
-        Assessment:
-        (Your response here)
-  
-        Plan:
-        (Your response here)
-      `;
-  
-      // Generate the structured SOAP note using GPT
-      const response = await openai.chat.completions.create({
-        model: "gpt-4", // Use GPT-4 for creating completions
-        messages: [
-          { role: "system", content: "You are a helpful assistant." },
-          { role: "user", content: prompt },
-        ],
-      });
-  
-      // Get the structured text from the response
-      const structuredNote = response.choices[0].message.content.trim();
-      console.log(structuredNote);
-  
-      // Split the structured note into sections
-      const [subjective, objective, assessment, plan] = structuredNote.split("\n\n");
-  
-      // Return the structured SOAP note
-      return {
-        subjective: subjective.replace("Subjective:", "").trim(),
-        objective: objective.replace("Objective:", "").trim(),
-        assessment: assessment.replace("Assessment:", "").trim(),
-        plan: plan.replace("Plan:", "").trim(),
-      };
-    } catch (error) {
-      logger.error("Error structuring SOAP note:", error);
-      throw error;
+    const prompt = `
+You are an experienced healthcare professional specializing in ${type}. Your task is to create a detailed, well-structured SOAP note from the provided information. Follow these specific guidelines:
+
+Specific Session Type Requirements:
+${typeSpecificInstructions}
+
+General SOAP Note Guidelines:
+1. Subjective Section:
+   - Document reported symptoms and history
+   - Include reported changes since last visit
+   - Note any pertinent medical/social history mentioned
+
+2. Objective Section:
+   - Record only observable, measurable data
+   - Include any measurements, test results, or observations
+   - Document examination findings
+   - Note any quantifiable changes from previous sessions
+
+3. Assessment Section:
+   - Provide clear analysis of the condition
+   - List any clinical impressions
+   - Document progress towards treatment goals
+   - Note any changes in condition from previous visits
+
+4. Plan Section:
+   - Detail specific treatment plans and interventions
+   - List any modifications to existing treatment
+   - Include follow-up instructions
+   - Document any referrals or consultations needed
+   - Note education provided
+
+Please structure the following information into a professional SOAP note, maintaining clinical terminology and professional language throughout:
+
+${sanitizedText}
+
+Format your response strictly as follows:
+Subjective:
+[Your detailed subjective section]
+
+Objective:
+[Your detailed objective section]
+
+Assessment:
+[Your detailed assessment section]
+
+Plan:
+[Your detailed plan section]`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are an experienced healthcare professional with expertise in creating detailed SOAP notes. Maintain professional medical terminology and format throughout the documentation.",
+        },
+        { role: "user", content: prompt },
+      ],
+      temperature: 0.7,
+      max_tokens: 1500,
+    });
+
+    // Get the structured text from the response
+    const structuredText = response.choices[0].message.content.trim();
+
+    // Parse sections using regex to handle different formatting possibilities
+    const sections = {};
+    const sectionRegex = {
+      subjective:
+        /Subjective:\s*([\s\S]*?)(?=\s*(?:Objective:|Assessment:|Plan:|$))/i,
+      objective: /Objective:\s*([\s\S]*?)(?=\s*(?:Assessment:|Plan:|$))/i,
+      assessment: /Assessment:\s*([\s\S]*?)(?=\s*(?:Plan:|$))/i,
+      plan: /Plan:\s*([\s\S]*?)(?=$)/i,
+    };
+
+    // Extract each section using regex
+    for (const [section, regex] of Object.entries(sectionRegex)) {
+      const match = structuredText.match(regex);
+      sections[section] = match ? match[1].trim() : "";
     }
+
+    // Return the structured SOAP note
+    return {
+      subjective: sections.subjective,
+      objective: sections.objective,
+      assessment: sections.assessment,
+      plan: sections.plan,
+    };
+  } catch (error) {
+    logger.error("Error structuring SOAP note:", error);
+    throw error;
   }
-  
+}

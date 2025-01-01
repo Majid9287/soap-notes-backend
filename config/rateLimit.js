@@ -1,5 +1,5 @@
 export const rateLimitConfig = {
-    dailyLimit: 50,
+    dailyLimit: 5,
     headers: {
         apiKey: 'X-API-Key',
         remaining: 'X-RateLimit-Remaining',

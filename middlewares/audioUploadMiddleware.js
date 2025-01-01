@@ -1,44 +1,106 @@
 import multer from "multer";
-import AppError from "../utils/appError.js";  // Import the custom AppError class
+import AppError from "../utils/appError.js";
+import { fileTypeFromBuffer } from 'file-type';
 
-const audioUpload = multer({
+// Multer configuration with size limits
+const multerConfig = {
   storage: multer.memoryStorage(),
-  fileFilter: (req, file, cb) => {
-    // Allowed MIME types for audio files
-    const allowedMimeTypes = [
-        "audio/mpeg",       // .mp3
-        "audio/wav",        // .wav
-        "audio/ogg",        // .ogg
-        "audio/x-m4a",      // .m4a
-        "audio/flac",       // .flac
-        "audio/aac",        // .aac
-        "audio/x-ms-wma",   // .wma
-        "audio/webm",       // .webm
-        "audio/x-aiff",     // .aiff
-        "audio/basic",      // .au, .snd
-        "audio/midi",       // .midi, .mid
-        "audio/x-midi",     // .midi, .mid
-        "audio/x-wav",      // .wav (alternate type)
-        "audio/x-pn-realaudio", // .ra
-        "audio/x-pn-realaudio-plugin", // .rmp
-        "audio/vnd.rn-realaudio", // .ra
-        "audio/x-aac",      // .aac (alternate type)
-        "audio/x-flac",     // .flac (alternate type)
-        "audio/x-mpegurl",  // .m3u
-        "audio/mpegurl",    // .m3u (alternate type)
-        "audio/x-scpls",    // .pls
-        "audio/adpcm",      // .adpcm
-      ];
-      
-    // Check MIME type
-    if (allowedMimeTypes.includes(file.mimetype)) {
-      cb(null, true); // Accept the file
-    } else {
-      // Create a custom AppError instead of the default Error
-      const error = new AppError("Only audio files are allowed!", 400); // 400 is the HTTP status code for Bad Request
-      cb(error, false); // Reject the file with the custom error
-    }
+  limits: {
+    fileSize: 100 * 1024 * 1024, // 100MB limit
   },
-}).single("audioFile");
+  fileFilter: async (req, file, cb) => {
+    try {
+      // First check if the mimetype starts with 'audio/'
+      if (!file.mimetype.startsWith('audio/')) {
+        // Check for some special cases that might be misidentified
+        const specialMimeTypes = [
+          'application/ogg',        // Some .ogg files
+          'video/ogg',             // Some audio files in .ogg container
+          'application/octet-stream' // Some raw audio files
+        ];
+        
+        if (!specialMimeTypes.includes(file.mimetype)) {
+          throw new AppError("File must be an audio format", 400);
+        }
+      }
+
+      // Store the original filename and mimetype for later use
+      req.audioFileInfo = {
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        encoding: file.encoding
+      };
+
+      cb(null, true);
+    } catch (error) {
+      cb(new AppError(error.message || "Error processing audio file", error.statusCode || 400));
+    }
+  }
+};
+
+// Create multer instance
+const upload = multer(multerConfig);
+
+// Wrapper function for better error handling
+const audioUpload = async (req, res, next) => {
+  upload.single('audioFile')(req, res, async (err) => {
+    try {
+      // Handle multer errors
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          throw new AppError("File size too large. Maximum size is 100MB", 400);
+        }
+        throw new AppError(`Upload error: ${err.message}`, 400);
+      }
+      
+      // Handle other errors
+      if (err) {
+        throw new AppError(err.message || "Error uploading file", err.statusCode || 400);
+      }
+
+      // Check if file exists
+      if (!req.file) {
+        throw new AppError("No audio file uploaded", 400);
+      }
+
+      // Verify file type using file-type library
+      const fileType = await fileTypeFromBuffer(req.file.buffer);
+      
+      if (fileType) {
+        // Update file info with detected mime type
+        req.audioFileInfo = {
+          ...req.audioFileInfo,
+          detectedMimeType: fileType.mime,
+          detectedExtension: fileType.ext
+        };
+
+        // Verify it's actually an audio file
+        if (!fileType.mime.startsWith('audio/') && 
+            !['ogg', 'wav', 'mp3', 'm4a', 'aac', 'flac'].includes(fileType.ext)) {
+          throw new AppError("Invalid audio file format", 400);
+        }
+      }
+
+      // Add file metadata
+      req.audioFileInfo.size = req.file.size;
+      req.audioFileInfo.uploadedAt = new Date();
+
+      next();
+    } catch (error) {
+      next(error);
+    }
+  });
+};
+
+// Helper function to get supported audio formats
+export const getSupportedAudioFormats = () => {
+  return [
+    '.mp3',  '.wav',  '.ogg',  '.m4a',  '.flac',
+    '.aac',  '.wma',  '.webm', '.aiff', '.au',
+    '.snd',  '.midi', '.mid',  '.ra',   '.rm',
+    '.ram',  '.pls',  '.m3u',  '.cda',  '.amr',
+    '.aif',  '.aifc', '.opus', '.mogg', '.3gp'
+  ];
+};
 
 export default audioUpload;

@@ -46,19 +46,25 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
+//api url with two option pass apikey:
+
+//with header set:X-API-Key:4456789
+//https://soap-notes-ai-befmdyc9effqdhgt.centralus-01.azurewebsites.net/api/soapnotes?patientName=majid&therapistName=mike
+
+//with pass key in url
+//https://soap-notes-ai-befmdyc9effqdhgt.centralus-01.azurewebsites.net/api/soapnotes/{key}?patientName=majid&therapistName=mike
+
 // Audio Input (Using File Upload):
-
-
 // "audioFile=audio file" \
 // "type=Psychotherapy Session" \
 //  "input_type=audio" \
-//  "patientName=John Doe" \
-//  "therapistName=Dr. Smith"
+//  "patientName=John Doe" \ //optional
+//  "therapistName=Dr. Smith" //optional
 // Text Input:
 
 //   "type": "Psychotherapy Session",
 //   "input_type": "text",
 //   "data": "Patient reported feeling better today.",
-//   "patientName": "John Doe",
-//   "therapistName": "Dr. Smith"
+//   "patientName": "John Doe", //optional
+//   "therapistName": "Dr. Smith" //optional
 // }'
