@@ -32,7 +32,7 @@ export async function createSOAPNote(req, res) {
     const { type, input_type } = req.body;
     const { patientName, therapistName } = req.query;
     const userId = req.user.id;
-   console.log(req.body)
+    console.log(req.body);
     // Validate input
     if (!type || !soapNoteTypes.includes(type)) {
       return sendErrorResponse(res, "Invalid SOAP note type");
@@ -75,7 +75,7 @@ export async function createSOAPNote(req, res) {
       return res.status(400).json({
         success: false,
         message: "Not enough data to generate SOAP notes",
-        error: "Text must contain at least 15 words",
+        error: "Data must contain information about the session",
       });
     }
     // Structure text into SOAP format

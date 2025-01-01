@@ -26,10 +26,18 @@ export const rateLimiter = async (req, res, next) => {
     next();
   } catch (error) {
     if (error.message === "Invalid API key") {
-      return sendErrorResponse(res, new AppError(error.message, 401));
+      return res.status(401).json({
+        success: false,
+        message: "Invalid API key",
+        error: "Invalid Key",
+      });
     }
     if (error.message === "Rate limit exceeded") {
-      return sendErrorResponse(res, new AppError(error.message, 429));
+      return res.status(429).json({
+        success: false,
+        message: "APIs calls limit exceeded",
+        error: "Rate limit exceeded",
+      });
     }
     sendErrorResponse(res, new AppError("Internal server error", 500));
   }
