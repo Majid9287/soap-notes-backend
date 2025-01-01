@@ -70,7 +70,10 @@ export async function createSOAPNote(req, res) {
       }
       transcribedText = text;
     }
-
+    const wordCount = transcribedText.trim().split(/\s+/).length;
+    if (wordCount < 15) {
+      return sendErrorResponse(res, "Not enough data to generate SOAP notes");
+    }
     // Structure text into SOAP format
     const soapNote = await structureSOAPNote(
       transcribedText,

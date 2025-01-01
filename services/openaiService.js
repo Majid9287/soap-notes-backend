@@ -180,8 +180,41 @@ export async function structureSOAPNote(
   if (!text) {
     throw new AppError("SOAP note text not provided", 400);
   }
-console.log(text,
-  type)
+
+  if (text.length < 30) {
+    // If the text is too short, we'll use it as a starting point for generating related content
+    const expandedPrompt = `Generate a brief SOAP note for a ${type} session based on the following initial interaction: "${text}". Include relevant details that might typically follow such an interaction in a ${type} setting.
+    Format your response strictly as follows:
+Subjective:
+[Your detailed subjective section]
+
+Objective:
+[Your detailed objective section]
+
+Assessment:
+[Your detailed assessment section]
+
+Plan:
+[Your detailed plan section]`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        {
+          role: "system",
+          content: `You are an experienced ${type} professional. Generate a brief, realistic interaction based on the given initial text.`,
+        },
+        { role: "user", content: expandedPrompt },
+      ],
+      temperature: 0.7,
+      max_tokens: 300,
+    });
+
+    text = response.choices[0].message.content.trim();
+  }
+
+  console.log(text, type);
+
   try {
     // Filter out patient's personal information before sending to OpenAI
     let sanitizedText = text;
@@ -204,124 +237,125 @@ console.log(text,
       .replace(/\b\d{2}[-/]\d{2}[-/]\d{4}\b/g, "[DOB]")
       // Remove potential SSN
       .replace(/\b\d{3}[-]?\d{2}[-]?\d{4}\b/g, "[SSN]");
-      let typeSpecificInstructions = "";
 
-      switch (type) {
-        case "Psychotherapy Session":
-          typeSpecificInstructions = `
-            - Focus on the patient's emotional and psychological state.
-            - Include any concerns related to mental health, mood, and behavior.
-            - Document any interventions or therapeutic techniques used during the session.
-          `;
-          break;
-        case "Clinical Social Worker":
-          typeSpecificInstructions = `
-            - Focus on the patient's psychosocial factors, including their family, social environment, and mental health.
-            - Include interventions related to counseling, support, and social work services.
-            - Document any strategies used to address the patient's social, emotional, or behavioral issues.
-          `;
-          break;
-        case "Psychiatrist Session":
-          typeSpecificInstructions = `
-            - Focus on the patient's mental health, psychiatric history, and current symptoms.
-            - Include any diagnoses, medication management, and treatment plans.
-            - Document any psychiatric evaluations, including mood, behavior, and cognitive function.
-          `;
-          break;
-        case "Chiropractor":
-          typeSpecificInstructions = `
-            - Focus on musculoskeletal assessments and spinal health.
-            - Document any adjustments, manipulations, or treatments provided.
-            - Include observations about posture, alignment, and pain relief.
-          `;
-          break;
-        case "Pharmacy":
-          typeSpecificInstructions = `
-            - Focus on medication management, prescriptions, and patient education about drugs.
-            - Include any recommendations for changes in medication, potential side effects, or interactions.
-            - Document any counseling provided regarding proper medication use.
-          `;
-          break;
-        case "Nurse Practitioner":
-          typeSpecificInstructions = `
-            - Focus on the patient's overall health, including any diagnoses, treatments, and follow-up care.
-            - Include assessments, physical exams, and any referrals to specialists.
-            - Document any prescribed treatments, medications, and patient education.
-          `;
-          break;
-        case "Massage Therapy":
-          typeSpecificInstructions = `
-            - Focus on the patient's musculoskeletal issues and therapeutic massage techniques used.
-            - Include any pain relief, muscle tension, or mobility improvements observed during the session.
-            - Document any specific areas treated and the techniques used (e.g., deep tissue, Swedish).
-          `;
-          break;
-        case "Occupational Therapy":
-          typeSpecificInstructions = `
-            - Focus on the patient's functional abilities and impairments.
-            - Include any interventions related to daily living skills, motor skills, or cognitive function.
-            - Document any assistive devices or techniques used to improve the patient's independence.
-          `;
-          break;
-        case "Veterinary":
-          typeSpecificInstructions = `
-            - Focus on the animal's health, including any symptoms, behavior, and physical findings.
-            - Include any diagnoses, treatments, or recommendations for care.
-            - Document any lab results, vaccinations, or medical history relevant to the animal's condition.
-          `;
-          break;
-        case "Podiatry":
-          typeSpecificInstructions = `
-            - Focus on the patient's foot and ankle health.
-            - Include any diagnoses related to podiatric conditions (e.g., bunions, heel pain).
-            - Document any treatments, procedures, or referrals to other specialists.
-          `;
-          break;
-        case "Physical Therapy":
-          typeSpecificInstructions = `
-            - Focus on the patient's physical condition, mobility, and strength.
-            - Include any exercises, physical assessments, or rehabilitation techniques used.
-            - Document pain levels, range of motion, and functional goals.
-          `;
-          break;
-        case "Speech Therapy (SLP)":
-          typeSpecificInstructions = `
-            - Focus on the patient's speech, language, and communication abilities.
-            - Include assessments related to articulation, language comprehension, and social communication.
-            - Document any therapy techniques or exercises used to improve speech and language skills.
-          `;
-          break;
-        case "Registered Nurse":
-          typeSpecificInstructions = `
-            - Focus on the patient's overall health and nursing assessments.
-            - Include vital signs, physical exams, and any nursing interventions.
-            - Document any medications administered, patient education, or referrals to other healthcare providers.
-          `;
-          break;
-        case "Acupuncture":
-          typeSpecificInstructions = `
-            - Focus on the acupuncture points, treatments, and any symptoms being addressed.
-            - Document any changes in the patient's condition post-treatment.
-            - Include any traditional Chinese medicine techniques used.
-          `;
-          break;
-        case "Dentistry":
-          typeSpecificInstructions = `
-            - Focus on the patient's oral health, including any dental assessments and treatments.
-            - Include diagnoses related to oral hygiene, cavities, gum health, and other dental conditions.
-            - Document any procedures performed, such as cleanings, fillings, or extractions.
-          `;
-          break;
-        default:
-          typeSpecificInstructions = `
-            - Include relevant details specific to the patient's condition and the therapy type.
-            - Ensure that the SOAP note is comprehensive and tailored to the type of session.
-          `;
-          break;
-      }
-  
+    let typeSpecificInstructions = "";
+
+    switch (type) {
+      case "Psychotherapy Session":
+        typeSpecificInstructions = `
+          - Focus on the patient's emotional and psychological state.
+          - Include any concerns related to mental health, mood, and behavior.
+          - Document any interventions or therapeutic techniques used during the session.
+        `;
+        break;
+      case "Clinical Social Worker":
+        typeSpecificInstructions = `
+          - Focus on the patient's psychosocial factors, including their family, social environment, and mental health.
+          - Include interventions related to counseling, support, and social work services.
+          - Document any strategies used to address the patient's social, emotional, or behavioral issues.
+        `;
+        break;
+      case "Psychiatrist Session":
+        typeSpecificInstructions = `
+          - Focus on the patient's mental health, psychiatric history, and current symptoms.
+          - Include any diagnoses, medication management, and treatment plans.
+          - Document any psychiatric evaluations, including mood, behavior, and cognitive function.
+        `;
+        break;
+      case "Chiropractor":
+        typeSpecificInstructions = `
+          - Focus on musculoskeletal assessments and spinal health.
+          - Document any adjustments, manipulations, or treatments provided.
+          - Include observations about posture, alignment, and pain relief.
+        `;
+        break;
+      case "Pharmacy":
+        typeSpecificInstructions = `
+          - Focus on medication management, prescriptions, and patient education about drugs.
+          - Include any recommendations for changes in medication, potential side effects, or interactions.
+          - Document any counseling provided regarding proper medication use.
+        `;
+        break;
+      case "Nurse Practitioner":
+        typeSpecificInstructions = `
+          - Focus on the patient's overall health, including any diagnoses, treatments, and follow-up care.
+          - Include assessments, physical exams, and any referrals to specialists.
+          - Document any prescribed treatments, medications, and patient education.
+        `;
+        break;
+      case "Massage Therapy":
+        typeSpecificInstructions = `
+          - Focus on the patient's musculoskeletal issues and therapeutic massage techniques used.
+          - Include any pain relief, muscle tension, or mobility improvements observed during the session.
+          - Document any specific areas treated and the techniques used (e.g., deep tissue, Swedish).
+        `;
+        break;
+      case "Occupational Therapy":
+        typeSpecificInstructions = `
+          - Focus on the patient's functional abilities and impairments.
+          - Include any interventions related to daily living skills, motor skills, or cognitive function.
+          - Document any assistive devices or techniques used to improve the patient's independence.
+        `;
+        break;
+      case "Veterinary":
+        typeSpecificInstructions = `
+          - Focus on the animal's health, including any symptoms, behavior, and physical findings.
+          - Include any diagnoses, treatments, or recommendations for care.
+          - Document any lab results, vaccinations, or medical history relevant to the animal's condition.
+        `;
+        break;
+      case "Podiatry":
+        typeSpecificInstructions = `
+          - Focus on the patient's foot and ankle health.
+          - Include any diagnoses related to podiatric conditions (e.g., bunions, heel pain).
+          - Document any treatments, procedures, or referrals to other specialists.
+        `;
+        break;
+      case "Physical Therapy":
+        typeSpecificInstructions = `
+          - Focus on the patient's physical condition, mobility, and strength.
+          - Include any exercises, physical assessments, or rehabilitation techniques used.
+          - Document pain levels, range of motion, and functional goals.
+        `;
+        break;
+      case "Speech Therapy (SLP)":
+        typeSpecificInstructions = `
+          - Focus on the patient's speech, language, and communication abilities.
+          - Include assessments related to articulation, language comprehension, and social communication.
+          - Document any therapy techniques or exercises used to improve speech and language skills.
+        `;
+        break;
+      case "Registered Nurse":
+        typeSpecificInstructions = `
+          - Focus on the patient's overall health and nursing assessments.
+          - Include vital signs, physical exams, and any nursing interventions.
+          - Document any medications administered, patient education, or referrals to other healthcare providers.
+        `;
+        break;
+      case "Acupuncture":
+        typeSpecificInstructions = `
+          - Focus on the acupuncture points, treatments, and any symptoms being addressed.
+          - Document any changes in the patient's condition post-treatment.
+          - Include any traditional Chinese medicine techniques used.
+        `;
+        break;
+      case "Dentistry":
+        typeSpecificInstructions = `
+          - Focus on the patient's oral health, including any dental assessments and treatments.
+          - Include diagnoses related to oral hygiene, cavities, gum health, and other dental conditions.
+          - Document any procedures performed, such as cleanings, fillings, or extractions.
+        `;
+        break;
+      default:
+        typeSpecificInstructions = `
+          - Include relevant details specific to the patient's condition and the therapy type.
+          - Ensure that the SOAP note is comprehensive and tailored to the type of session.
+        `;
+        break;
+    }
+
     const prompt = `
-You are an experienced healthcare professional specializing in ${type}. Your task is to create a detailed, well-structured SOAP note from the provided information. Follow these specific guidelines:
+You are an experienced healthcare professional specializing in ${type}. Your task is to create a detailed, well-structured SOAP note from the provided information. If the input is brief, expand on it logically based on typical ${type} sessions. Follow these specific guidelines:
 
 Specific Session Type Requirements:
 ${typeSpecificInstructions}
@@ -331,18 +365,21 @@ General SOAP Note Guidelines:
    - Document reported symptoms and history
    - Include reported changes since last visit
    - Note any pertinent medical/social history mentioned
+   - If information is limited, logically infer likely subjective data based on the type of session
 
 2. Objective Section:
    - Record only observable, measurable data
    - Include any measurements, test results, or observations
    - Document examination findings
    - Note any quantifiable changes from previous sessions
+   - If specific data is not provided, suggest typical objective findings for this type of session
 
 3. Assessment Section:
    - Provide clear analysis of the condition
    - List any clinical impressions
    - Document progress towards treatment goals
    - Note any changes in condition from previous visits
+   - If assessment details are sparse, provide a general assessment based on the available information and typical cases
 
 4. Plan Section:
    - Detail specific treatment plans and interventions
@@ -350,8 +387,9 @@ General SOAP Note Guidelines:
    - Include follow-up instructions
    - Document any referrals or consultations needed
    - Note education provided
+   - If the plan is not explicitly stated, suggest a general plan based on the type of session and available information
 
-Please structure the following information into a professional SOAP note, maintaining clinical terminology and professional language throughout:
+Please structure the following information into a professional SOAP note, maintaining clinical terminology and professional language throughout. Expand logically on brief inputs:
 
 ${sanitizedText}
 
@@ -400,7 +438,9 @@ Plan:
       const match = structuredText.match(regex);
       sections[section] = match ? match[1].trim() : "";
     }
-    console.log(sections)   // Return the structured SOAP note
+
+    console.log(sections);
+    // Return the structured SOAP note
     return {
       subjective: sections.subjective,
       objective: sections.objective,
