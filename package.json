@@ -43,6 +43,7 @@
     "node-cron": "^3.0.3",
     "nodemailer": "^6.9.16",
     "openai": "^4.77.0",
+    "stripe": "^17.5.0",
     "winston": "^3.17.0"
   },
   "devDependencies": {

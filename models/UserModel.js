@@ -14,6 +14,7 @@ const userSchema = new mongoose.Schema(
       unique: true,
     },
     apiKey: { type: mongoose.Schema.Types.ObjectId, ref: 'ApiKey', required: true },
+    package: { type: mongoose.Schema.Types.ObjectId, ref: 'Package', required: true },
     plan: {
       type: String,
       enum: ['free', 'premium'],

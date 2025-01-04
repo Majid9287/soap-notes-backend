@@ -3,7 +3,7 @@ import APIFeatures from '../utils/apiFeatures.js';
 import AppError from '../utils/appError.js';
 import catchAsync from '../utils/catchAsync.js';
 import mongoose from 'mongoose';
-
+import { sendSuccessResponse, sendErrorResponse } from "../utils/responseHandler.js";
 // DELETE One Document
 export const deleteOne = (Model) =>
     catchAsync(async (req, res, next) => {

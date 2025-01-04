@@ -1,7 +1,7 @@
+// middlewares/audioUploadMiddleware.js
 import multer from "multer";
 import AppError from "../utils/appError.js";
 import { fileTypeFromBuffer } from "file-type";
-
 // Helper function to get supported audio formats
 export const getSupportedAudioFormats = () => {
   return [
@@ -12,8 +12,6 @@ export const getSupportedAudioFormats = () => {
     ".aif", ".aifc", ".opus", ".mogg", ".3gp"
   ];
 };
-
-// Multer configuration with size limits
 const multerConfig = {
   storage: multer.memoryStorage(),
   limits: {
@@ -21,20 +19,11 @@ const multerConfig = {
   },
   fileFilter: async (req, file, cb) => {
     try {
-      // First check if the mimetype starts with 'audio/'
-      if (!file.mimetype.startsWith("audio/")) {
-        const specialMimeTypes = [
-          "application/ogg",        // Some .ogg files
-          "video/ogg",             // Some audio files in .ogg container
-          "application/octet-stream" // Some raw audio files
-        ];
-        
-        if (!specialMimeTypes.includes(file.mimetype)) {
-          throw new AppError("File must be an audio format", 400);
-        }
+      if (!file.mimetype.startsWith("audio/") && 
+          !["application/ogg", "video/ogg", "application/octet-stream"].includes(file.mimetype)) {
+        throw new AppError("File must be an audio format", 400);
       }
 
-      // Store the original filename and mimetype for later use
       req.audioFileInfo = {
         originalName: file.originalname,
         mimeType: file.mimetype,
@@ -43,15 +32,13 @@ const multerConfig = {
 
       cb(null, true);
     } catch (error) {
-      cb(new AppError(error.message || "Error processing audio file", error.statusCode || 400));
+      cb(error);
     }
   },
 };
 
-// Create multer instance
 const upload = multer(multerConfig);
 
-// Wrapper function for better error handling
 const audioUpload = async (req, res, next) => {
   upload.single("audioFile")(req, res, async (err) => {
     try {
@@ -66,32 +53,28 @@ const audioUpload = async (req, res, next) => {
         throw new AppError(err.message || "Error uploading file", err.statusCode || 400);
       }
 
-      // Skip validation if no file is provided
-      if (!req.file) {
-        return next(); // Proceed without throwing an error
+      if (req.body.input_type === "audio" && !req.file) {
+        throw new AppError("Please upload audio file", 400);
       }
 
-      // Verify file type using file-type library
-      const fileType = await fileTypeFromBuffer(req.file.buffer);
-      if (fileType) {
-        req.audioFileInfo = {
-          ...req.audioFileInfo,
-          detectedMimeType: fileType.mime,
-          detectedExtension: fileType.ext,
-        };
+      if (req.file) {
+        const fileType = await fileTypeFromBuffer(req.file.buffer);
+        if (fileType) {
+          req.audioFileInfo = {
+            ...req.audioFileInfo,
+            detectedMimeType: fileType.mime,
+            detectedExtension: fileType.ext,
+          };
 
-        // Verify it's actually an audio file
-        const supportedFormats = getSupportedAudioFormats().map((f) => f.replace(".", ""));
-        if (
-          !fileType.mime.startsWith("audio/") &&
-          !supportedFormats.includes(fileType.ext)
-        ) {
-          throw new AppError("Invalid audio file format", 400);
+          const supportedFormats = getSupportedAudioFormats().map((f) => f.replace(".", ""));
+          if (!fileType.mime.startsWith("audio/") && !supportedFormats.includes(fileType.ext)) {
+            throw new AppError("Invalid audio file format", 400);
+          }
         }
-      }
 
-      req.audioFileInfo.size = req.file.size;
-      req.audioFileInfo.uploadedAt = new Date();
+        req.audioFileInfo.size = req.file.size;
+        req.audioFileInfo.uploadedAt = new Date();
+      }
 
       next();
     } catch (error) {

@@ -1,3 +1,4 @@
+//utils/helpers.js
 import rateLimit from 'express-rate-limit'
 import AppError from './appError.js'
 import mongoose from 'mongoose'
@@ -19,6 +20,8 @@ export const extractApiKey = async (req) => {
     throw new AppError('Invalid API key', 401);
   };
 
+
+  
 export const checkReferenceId = async (Model, foreignKey, next) => {
     const referenceKey = await mongoose.model(Model).findById(foreignKey)
     if (!referenceKey) {
