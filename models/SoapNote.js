@@ -1,6 +1,6 @@
 //models/soapNote.js
 import mongoose from "mongoose";
-
+import { encrypt, decrypt } from "../utils/cryptoUtils.js";
 const soapNoteSchema = new mongoose.Schema(
   {
     userId: {
@@ -8,11 +8,15 @@ const soapNoteSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
-    text:{
-        type: String
+    text: {
+      type: String,
+      set: encrypt,
+      get: decrypt,
     },
     patientName: {
       type: String,
+      set: encrypt,
+      get: decrypt,
     },
     therapistName: {
       type: String,
@@ -31,6 +35,7 @@ const soapNoteSchema = new mongoose.Schema(
     },
   },
   {
+    toJSON: { getters: true },
     timestamps: true,
   }
 );
