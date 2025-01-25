@@ -1,4 +1,5 @@
-import User from "../models/UserModel.js";
+//controllers/authController.js
+import User from '../models/UserModel.js';
 import Package from "../models/Package.js";
 import {
   generateAccessToken,
@@ -7,6 +8,7 @@ import {
   generateApiKey,
 } from "../utils/tokenUtils.js";
 import bcrypt from "bcrypt";
+import { sendOtpEmail } from '../services/Email.js';
 import { sendSuccessResponse } from "../utils/responseHandler.js";
 import AppError from "../utils/appError.js";
 import catchAsync from "../utils/catchAsync.js";
@@ -196,3 +198,135 @@ export const getUserProfile = catchAsync(async (req, res) => {
   sendSuccessResponse(res, { user }, "User profile retrieved successfully");
 });
 
+// Signup with OTP
+export const signupWithOTP = catchAsync(async (req, res) => {
+  const { name, email, password } = req.body;
+
+  const existingUser = await User.findOne({ email });
+  if (existingUser) {
+    throw new AppError("User already exists", 400);
+  }
+
+  const freePackage = await Package.findOne({ name: "Free" });
+  if (!freePackage) {
+    throw new AppError("Free package not found", 500);
+  }
+
+  const newUser = new User({ name, email, password });
+  const apiKey = await generateApiKey(newUser._id, freePackage._id);
+  newUser.apiKey = apiKey._id;
+  newUser.package = freePackage._id;
+
+  // Generate and send OTP
+  const otp = newUser.generateOTP();
+  await sendOtpEmail(email, name, otp);
+  await newUser.save();
+
+  sendSuccessResponse(
+    res,
+    { email },
+    "OTP sent for verification",
+    201
+  );
+});
+
+// Verify Signup OTP
+export const verifySignupOTP = catchAsync(async (req, res) => {
+  const { email, otp } = req.body;
+
+  const user = await User.findOne({ email }).select('+otpCode +otpExpires');
+  if (!user) throw new AppError("User not found", 404);
+
+  if (!user.validateOTP(otp)) {
+    throw new AppError("Invalid or expired OTP", 400);
+  }
+
+  user.isOtpVerified = true;
+  user.otpCode = undefined;
+  user.otpExpires = undefined;
+  await user.save();
+
+  const accessToken = generateAccessToken(user._id, user.role, null);
+  const refreshToken = generateRefreshToken(user._id);
+
+  res.cookie("accessToken", accessToken, { /* existing cookie options */ });
+  res.cookie("refreshToken", refreshToken, { /* existing cookie options */ });
+
+  sendSuccessResponse(
+    res,
+    { accessToken, refreshToken },
+    "User registered successfully"
+  );
+});
+
+// Signin with 2FA OTP
+export const signinWithOTP = catchAsync(async (req, res) => {
+  const { email, password } = req.body;
+
+  const user = await User.findOne({ email }).select('+password');
+  if (!user) throw new AppError("Invalid credentials", 401);
+
+  const isMatch = await user.comparePassword(password);
+  if (!isMatch) throw new AppError("Invalid credentials", 401);
+
+  // Generate and send OTP
+  const otp = user.generateOTP();
+  await sendOtpEmail(email, user.name, otp);
+  await user.save();
+
+  sendSuccessResponse(
+    res,
+    { email },
+    "OTP sent for login verification"
+  );
+});
+
+// Verify Signin OTP
+export const verifySigninOTP = catchAsync(async (req, res) => {
+  const { email, otp } = req.body;
+
+  const user = await User.findOne({ email }).select('+otpCode +otpExpires');
+  if (!user) throw new AppError("User not found", 404);
+
+  if (!user.validateOTP(otp)) {
+    throw new AppError("Invalid or expired OTP", 400);
+  }
+
+  const accessToken = generateAccessToken(
+    user._id,
+    user.role,
+    user.organization || null
+  );
+  const refreshToken = generateRefreshToken(user._id);
+
+  res.cookie("accessToken", accessToken, { /* existing cookie options */ });
+  res.cookie("refreshToken", refreshToken, { /* existing cookie options */ });
+
+  user.otpCode = undefined;
+  user.otpExpires = undefined;
+  await user.save();
+
+  sendSuccessResponse(
+    res,
+    { accessToken, refreshToken },
+    "Signed in successfully"
+  );
+});
+
+// Resend OTP
+export const resendOTP = catchAsync(async (req, res) => {
+  const { email } = req.body;
+
+  const user = await User.findOne({ email });
+  if (!user) throw new AppError("User not found", 404);
+
+  const otp = user.generateOTP();
+  await sendOtpEmail(email, user.name, otp);
+  await user.save();
+
+  sendSuccessResponse(
+    res,
+    { email },
+    "New OTP sent successfully"
+  );
+});
