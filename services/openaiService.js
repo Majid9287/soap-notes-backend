@@ -175,7 +175,11 @@ export async function structureSOAPNote(
   text,
   type,
   patientName = null,
-  therapistName = null
+  therapistName = null,
+  date,
+  time,
+  icd10,
+  cpt
 ) {
   if (!text) {
     throw new AppError("SOAP note text not provided", 400);
@@ -353,10 +357,21 @@ Plan:
         `;
         break;
     }
+    let additionalDetails = "";
+    if (patientName) {
+      additionalDetails += `Patient Name: ${patientName}\n`;
+    }
+    if (therapistName) {
+      additionalDetails += `Therapist Name: ${therapistName}\n`;
+    }
 
     const prompt = `
 You are an experienced healthcare professional specializing in ${type}. Your task is to create a detailed, well-structured SOAP note from the provided information. If the input is brief, expand on it logically based on typical ${type} sessions. Follow these specific guidelines:
-
+${additionalDetails}
+- Session Date: ${date}
+- Session Time: ${time}
+- ICD-10 Code: ${icd10}
+- CPT Code: ${cpt}
 Specific Session Type Requirements:
 ${typeSpecificInstructions}
 

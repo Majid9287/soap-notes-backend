@@ -1,6 +1,6 @@
 // controllers/soapNoteController.js
 import { transcribeAudio, structureSOAPNote } from "../services/openaiService.js";
-import SoapNote from "../models/soapNote.js";
+import SoapNote from "../models/SoapNote.js";
 import { sendSuccessResponse, sendErrorResponse } from "../utils/responseHandler.js";
 import AppError from "../utils/appError.js";
 import catchAsync from "../utils/catchAsync.js";
@@ -25,7 +25,7 @@ const soapNoteTypes = [
 
 // Create SOAP Note
 export const createSOAPNote = catchAsync(async (req, res) => {
-  const { type, input_type } = req.body;
+  const { type, input_type, date, time, icd10, cpt } = req.body;
   const { patientName, therapistName } = req.query;
   const userId = req.user.id;
 
@@ -34,6 +34,9 @@ export const createSOAPNote = catchAsync(async (req, res) => {
   }
   if (!input_type || !["audio", "text"].includes(input_type)) {
     throw new AppError("Invalid input type", 400);
+  }
+  if (!date || !time || !icd10 || !cpt) {
+    throw new AppError("Date, time, ICD10, and CPT codes are required", 400);
   }
 
   let transcribedText;
@@ -72,7 +75,11 @@ export const createSOAPNote = catchAsync(async (req, res) => {
     transcribedText,
     type,
     patientName,
-    therapistName
+    therapistName,
+    date,
+    time,
+    icd10,
+    cpt
   );
 
   // Save SOAP note to database
@@ -82,6 +89,10 @@ export const createSOAPNote = catchAsync(async (req, res) => {
     patientName,
     therapistName,
     inputType: input_type,
+    date,
+    time,
+    icd10,
+    cpt,
     ...soapNote,
     // Add metadata for audio transcriptions
     ...(input_type === "audio" && {
@@ -112,7 +123,7 @@ export const getSOAPNotes = catchAsync(async (req, res) => {
   }
 
   const notes = await SoapNote.find(filters).sort({ createdAt: -1 });
-  
+
   if (notes.length === 0) {
     throw new AppError("No SOAP notes found", 404);
   }
