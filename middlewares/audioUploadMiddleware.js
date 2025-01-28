@@ -1,7 +1,7 @@
-// middlewares/audioUploadMiddleware.js
 import multer from "multer";
 import AppError from "../utils/appError.js";
 import { fileTypeFromBuffer } from "file-type";
+
 // Helper function to get supported audio formats
 export const getSupportedAudioFormats = () => {
   return [
@@ -9,18 +9,20 @@ export const getSupportedAudioFormats = () => {
     ".aac", ".wma", ".webm", ".aiff", ".au",
     ".snd", ".midi", ".mid", ".ra", ".rm",
     ".ram", ".pls", ".m3u", ".cda", ".amr",
-    ".aif", ".aifc", ".opus", ".mogg", ".3gp"
+    ".aif", ".aifc", ".opus", ".mogg", ".3gp",
+    ".caf", ".mp4" // Added support for iPhone Safari formats
   ];
 };
+
 const multerConfig = {
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB limit
+    fileSize: 500 * 1024 * 1024, // 100MB limit
   },
   fileFilter: async (req, file, cb) => {
     try {
       if (!file.mimetype.startsWith("audio/") && 
-          !["application/ogg", "video/ogg", "application/octet-stream"].includes(file.mimetype)) {
+          !["application/ogg", "video/ogg", "application/octet-stream", "audio/mp4"].includes(file.mimetype)) {
         throw new AppError("File must be an audio format", 400);
       }
 
