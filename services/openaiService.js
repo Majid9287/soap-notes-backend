@@ -18,34 +18,7 @@ ffmpeg.setFfprobePath(ffprobeInstaller.path);
 const openai = new OpenAI({
   apiKey: config.openaiApiKey,
 });
-const client = new SpeechClient({
-  credentials: JSON.parse(
-    Buffer.from(
-      process.env.GOOGLE_APPLICATION_CREDENTIALS_BASE64,
-      "base64"
-    ).toString("utf-8")
-  ),
-});
-
-// Promisify ffmpeg operations
-const getAudioMetadata = (filePath) => {
-  return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(filePath, (err, metadata) => {
-      if (err) return reject(err);
-      const audioStream = metadata.streams.find(
-        (stream) => stream.codec_type === "audio"
-      );
-      if (!audioStream) return reject(new Error("No audio stream found"));
-
-      resolve({
-        encoding: audioStream.codec_name.toUpperCase(),
-        sampleRateHertz: parseInt(audioStream.sample_rate),
-        channels: audioStream.channels,
-      });
-    });
-  });
-};
-
+// Normalize audio to 16kHz WAV
 const normalizeAudio = (inputPath, outputPath) => {
   return new Promise((resolve, reject) => {
     ffmpeg(inputPath)
@@ -72,100 +45,53 @@ export async function transcribeAudio(audioBuffer, options = {}) {
   let normalizedFilePath = null;
 
   try {
-    // Create temp directory if it doesn't exist
     const tempDir = path.join(os.tmpdir(), "audio-transcriptions");
     await fs.promises.mkdir(tempDir, { recursive: true });
 
-    // Save original audio
-    tempFilePath = path.join(tempDir, `original_${Date.now()}.audio`);
+    tempFilePath = path.join(tempDir, `original_${Date.now()}.mp3`);
     await fs.promises.writeFile(tempFilePath, audioBuffer);
 
-    // Get audio metadata
-    let metadata;
-    try {
-      metadata = await getAudioMetadata(tempFilePath);
-    } catch (error) {
-      throw new AudioTranscriptionError(
-        "Invalid audio file format",
-        "INVALID_AUDIO_FORMAT",
-        error.message
-      );
-    }
-
-    // Normalize audio
     normalizedFilePath = path.join(tempDir, `normalized_${Date.now()}.wav`);
     await normalizeAudio(tempFilePath, normalizedFilePath);
 
-    // Read normalized audio
-    const normalizedBuffer = await fs.promises.readFile(normalizedFilePath);
-    const audioContent = normalizedBuffer.toString("base64");
+    const audioStream = fs.createReadStream(normalizedFilePath);
 
-    // Build recognition config
-    const config = {
-      encoding: "LINEAR16",
-      sampleRateHertz: 16000,
-      languageCode: options.languageCode || "en-US",
-      enableWordTimeOffsets: true,
-      enableAutomaticPunctuation: true,
-      useEnhanced: true,
-      audioChannelCount: 1,
-    };
-
-    // Adjust model based on audio quality
-    if (metadata.sampleRateHertz < 16000) {
-      config.model = "phone_call";
-    }
-
-    // Perform transcription
-    const [response] = await client.recognize({
-      audio: { content: audioContent },
-      config,
+    const response = await openai.audio.transcriptions.create({
+      model: "whisper-1",
+      file: audioStream,
+      language: options.languageCode || "en",
     });
 
-    if (!response.results?.length) {
+    if (!response.text) {
       throw new AudioTranscriptionError(
-        "I couldn't catch that. Try speaking a bit slower and clearer. You can try again or record again",
+        "No transcription results available",
         "NO_TRANSCRIPTION_RESULTS",
         null
       );
     }
 
-    // Format response
-    const result = {
-      transcription: response.results
-        .map((result) => result.alternatives?.[0]?.transcript || "")
-        .join("\n")
-        .trim(),
-      confidence: response.results[0].alternatives[0].confidence,
-      words: response.results.flatMap(
-        (result) => result.alternatives[0].words || []
-      ),
+    return {
+      transcription: response.text.trim(),
     };
-
-    return result;
   } catch (error) {
     if (error instanceof AudioTranscriptionError) {
       throw error;
     }
-
     throw new AudioTranscriptionError(
       "I couldn't catch that. Try speaking a bit slower and clearer. You can try again or record again",
       "TRANSCRIPTION_ERROR",
       error.message
     );
   } finally {
-    // Cleanup temporary files
     const filesToDelete = [tempFilePath, normalizedFilePath]
       .filter(Boolean)
       .filter((file) => fs.existsSync(file));
 
     await Promise.all(
       filesToDelete.map((file) =>
-        fs.promises
-          .unlink(file)
-          .catch((err) =>
-            console.error(`Failed to delete temporary file ${file}:`, err)
-          )
+        fs.promises.unlink(file).catch((err) =>
+          console.error(`Failed to delete temporary file ${file}:`, err)
+        )
       )
     );
   }
