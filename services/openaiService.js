@@ -124,7 +124,7 @@ export async function transcribeAudio(audioBuffer, options = {}) {
 
     if (!response.results?.length) {
       throw new AudioTranscriptionError(
-        "No transcription results available",
+        "I couldn't catch that. Try speaking a bit slower and clearer. You can try again or record again",
         "NO_TRANSCRIPTION_RESULTS",
         null
       );
@@ -149,7 +149,7 @@ export async function transcribeAudio(audioBuffer, options = {}) {
     }
 
     throw new AudioTranscriptionError(
-      "Transcription failed",
+      "I couldn't catch that. Try speaking a bit slower and clearer. You can try again or record again",
       "TRANSCRIPTION_ERROR",
       error.message
     );
