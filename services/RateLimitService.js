@@ -73,7 +73,8 @@ export class RateLimitService {
     if (requestType === 'audio') {
       if (userPackage.features.audioSoapNotes !== 'unlimited' && 
           apiKey.audioUsage >= userPackage.features.audioSoapNotes) {
-        throw new AppError('Audio usage limit exceeded', 429);
+        throw new AppError('You have exceeded your Audio usage limit. Please try again tomorrow.', 429);
+
       }
 
       // Check audio file length limit
@@ -90,7 +91,8 @@ export class RateLimitService {
     } else if (requestType === 'text') {
       if (userPackage.features.textSoapNotes !== 'unlimited' && 
           apiKey.textUsage >= userPackage.features.textSoapNotes) {
-        throw new AppError('Text usage limit exceeded', 429);
+            throw new AppError('You have exceeded your text usage limit. Please try again tomorrow.', 429);
+
       }
       apiKey.textUsage++;
     }
