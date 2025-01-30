@@ -8,14 +8,6 @@ const userActivitySchema = new mongoose.Schema({
     method: String,
     ipAddress: String,
     userAgent: String,
-    location: {
-        country: String,
-        city: String,
-        region: String,
-        latitude: Number,
-        longitude: Number,
-        timezone: String
-    },
     requestBody: Object,
     responseStatus: Number,
     responseTime: Number,
