@@ -108,9 +108,9 @@ export const createSOAPNote = catchAsync(async (req, res) => {
   sendSuccessResponse(res, newSoapNote, "SOAP note created successfully", 201);
 });
 
-// Get SOAP Notes
+// Get SOAP Notes with Pagination and Date Filters
 export const getSOAPNotes = catchAsync(async (req, res) => {
-  const { patientName, therapistName } = req.query;
+  const { patientName, therapistName, dateFilter, specificDate, page = 1, limit = 10 } = req.query;
   const userId = req.user.id; // From auth middleware
 
   const filters = { userId };
@@ -122,11 +122,95 @@ export const getSOAPNotes = catchAsync(async (req, res) => {
     filters.therapistName = { $regex: therapistName, $options: "i" };
   }
 
-  const notes = await SoapNote.find(filters).sort({ createdAt: -1 });
+  // Date Filters
+  if (dateFilter || specificDate) {
+    let startDate, endDate;
 
-  if (notes.length === 0) {
-    throw new AppError("No SOAP notes found", 404);
+    if (specificDate) {
+      // Handle specific date filter (e.g., 12/1/2025)
+      const parsedDate = new Date(specificDate);
+      if (isNaN(parsedDate.getTime())) {
+        throw new AppError("Invalid specific date format. Use MM/DD/YYYY.", 400);
+      }
+
+      startDate = new Date(parsedDate.setHours(0, 0, 0, 0));
+      endDate = new Date(parsedDate.setHours(23, 59, 59, 999));
+    } else {
+      // Handle predefined date filters (day, week, month)
+      const currentDate = new Date();
+
+      switch (dateFilter) {
+        case 'day':
+          startDate = new Date(currentDate.setHours(0, 0, 0, 0));
+          endDate = new Date(currentDate.setHours(23, 59, 59, 999));
+          break;
+        case 'week':
+          startDate = new Date(currentDate.setDate(currentDate.getDate() - currentDate.getDay()));
+          endDate = new Date(currentDate.setDate(currentDate.getDate() - currentDate.getDay() + 6));
+          break;
+        case 'month':
+          startDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
+          endDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
+          break;
+        default:
+          throw new AppError("Invalid date filter. Use 'day', 'week', 'month', or provide a specific date.", 400);
+      }
+    }
+
+    if (startDate && endDate) {
+      filters.createdAt = { $gte: startDate, $lte: endDate };
+    }
   }
 
-  sendSuccessResponse(res, notes, "SOAP notes fetched successfully");
+  const skip = (page - 1) * limit;
+
+  const notes = await SoapNote.find(filters).select("-subjective -objective -assessment -plan")
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(parseInt(limit));
+
+  // if (notes.length === 0) {
+  //   throw new AppError("No SOAP notes found", 404);
+    
+  // }
+
+  const totalNotes = await SoapNote.countDocuments(filters);
+
+  sendSuccessResponse(res, {
+    notes,
+    totalNotes,
+    totalPages: Math.ceil(totalNotes / limit),
+    currentPage: parseInt(page),
+  }, "SOAP notes fetched successfully");
+});
+
+// Get Single SOAP Note by ID
+
+
+  export const getSOAPNoteById = catchAsync(async (req, res) => {
+  const  id  = req.params.id;
+  
+  const note = await SoapNote.findOne({ _id: id });
+
+  if (!note) {
+    throw new AppError("SOAP note not found", 404);
+  }
+
+  sendSuccessResponse(res, note, "SOAP note fetched successfully");
+});
+// Delete SOAP Note by ID
+export const deleteSOAPNote = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  
+  // Find the note and ensure it belongs to the authenticated user
+  const note = await SoapNote.findOne({ _id: id });
+
+  if (!note) {
+    throw new AppError("SOAP note not found or you do not have permission to delete it", 404);
+  }
+
+  // Delete the note
+  await SoapNote.deleteOne({ _id: id });
+
+  sendSuccessResponse(res, null, "SOAP note deleted successfully");
 });
