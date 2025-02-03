@@ -18,51 +18,104 @@ ffmpeg.setFfprobePath(ffprobeInstaller.path);
 const openai = new OpenAI({
   apiKey: config.openaiApiKey,
 });
-// Normalize audio to 16kHz WAV
-const normalizeAudio = (inputPath, outputPath) => {
+
+const MAX_CHUNK_DURATION = 600; // 10 minutes in seconds
+const MAX_RETRIES = 3;
+const NOISE_REDUCTION_FILTERS = [
+  'highpass=f=200',
+  'afftdn=nf=-25',
+  'compand=attacks=0.02:decays=0.05'
+];
+
+// Enhanced audio processing with noise reduction
+const processAudio = async (inputPath, outputPath) => {
   return new Promise((resolve, reject) => {
     ffmpeg(inputPath)
-      .toFormat("wav")
+      .audioFilters(NOISE_REDUCTION_FILTERS)
+      .toFormat('wav')
       .audioChannels(1)
       .audioFrequency(16000)
-      .on("end", resolve)
-      .on("error", reject)
+      .on('end', resolve)
+      .on('error', reject)
       .save(outputPath);
   });
 };
 
-export class AudioTranscriptionError extends Error {
-  constructor(message, code, details) {
-    super(message);
-    this.name = "AudioTranscriptionError";
-    this.code = code;
-    this.details = details;
+// Split audio into manageable chunks
+const splitAudio = (inputPath, chunkDuration = MAX_CHUNK_DURATION) => {
+  return new Promise((resolve, reject) => {
+    const outputPattern = path.join(
+      path.dirname(inputPath),
+      `chunk_%03d_${path.basename(inputPath)}`
+    );
+
+    ffmpeg(inputPath)
+      .output(outputPattern)
+      .audioCodec('pcm_s16le')
+      .duration(chunkDuration)
+      .outputOptions([
+        '-f segment',
+        '-segment_time', chunkDuration,
+        '-reset_timestamps 1'
+      ])
+      .on('end', () => resolve(fs.readdirSync(path.dirname(inputPath))
+        .filter(f => f.startsWith('chunk_') && f.endsWith(path.basename(inputPath)))))
+      .on('error', reject)
+      .run();
+  });
+};
+
+// Retry wrapper with exponential backoff
+async function withRetry(fn, retries = MAX_RETRIES) {
+  try {
+    return await fn();
+  } catch (error) {
+    if (retries <= 0) throw error;
+    await new Promise(resolve => setTimeout(resolve, 1000 * (MAX_RETRIES - retries + 1)));
+    return withRetry(fn, retries - 1);
   }
 }
 
 export async function transcribeAudio(audioBuffer, options = {}) {
-  let tempFilePath = null;
-  let normalizedFilePath = null;
+  const tempDir = path.join(os.tmpdir(), `audio-transcriptions-${Date.now()}`);
+  await fs.promises.mkdir(tempDir, { recursive: true });
 
   try {
-    const tempDir = path.join(os.tmpdir(), "audio-transcriptions");
-    await fs.promises.mkdir(tempDir, { recursive: true });
+    // Initial processing
+    const originalPath = path.join(tempDir, 'original.mp3');
+    await fs.promises.writeFile(originalPath, audioBuffer);
 
-    tempFilePath = path.join(tempDir, `original_${Date.now()}.mp3`);
-    await fs.promises.writeFile(tempFilePath, audioBuffer);
+    // Pre-process audio
+    const processedPath = path.join(tempDir, 'processed.wav');
+    await processAudio(originalPath, processedPath);
 
-    normalizedFilePath = path.join(tempDir, `normalized_${Date.now()}.wav`);
-    await normalizeAudio(tempFilePath, normalizedFilePath);
+    // Split into chunks
+    const chunkPaths = await splitAudio(processedPath);
+    
+    // Parallel processing with concurrency control
+    const CONCURRENCY = 4;
+    const chunks = [];
+    for (let i = 0; i < chunkPaths.length; i += CONCURRENCY) {
+      const batch = chunkPaths.slice(i, i + CONCURRENCY);
+      const results = await Promise.all(batch.map(async (chunkPath) => {
+        const audioStream = fs.createReadStream(path.join(tempDir, chunkPath));
+        
+        return withRetry(async () => {
+          const response = await openai.audio.transcriptions.create({
+            model: "whisper-1",
+            file: audioStream,
+            language: options.languageCode || "en",
+            prompt: "[BACKGROUND NOISE] [IGNORE NON-SPEECH SOUNDS] [TRANSCRIBE SPEECH ONLY]",
+            temperature: 0.2,
+            max_tokens: 4096
+          });
+          return response.text.trim();
+        });
+      }));
+      chunks.push(...results.filter(Boolean));
+    }
 
-    const audioStream = fs.createReadStream(normalizedFilePath);
-
-    const response = await openai.audio.transcriptions.create({
-      model: "whisper-1",
-      file: audioStream,
-      language: options.languageCode || "en",
-    });
-
-    if (!response.text) {
+    if (chunks.length === 0) {
       throw new AudioTranscriptionError(
         "No transcription results available",
         "NO_TRANSCRIPTION_RESULTS",
@@ -70,33 +123,19 @@ export async function transcribeAudio(audioBuffer, options = {}) {
       );
     }
 
-    return {
-      transcription: response.text.trim(),
-    };
+    return { transcription: chunks.join('\n\n') };
   } catch (error) {
-    if (error instanceof AudioTranscriptionError) {
-      throw error;
-    }
+    logger.error(`Transcription error: ${error.message}`, error);
     throw new AudioTranscriptionError(
-      "I couldn't catch that. Try speaking a bit slower and clearer. You can try again or record again",
+      "I couldn't catch that. Please ensure clear speech and try again.",
       "TRANSCRIPTION_ERROR",
       error.message
     );
   } finally {
-    const filesToDelete = [tempFilePath, normalizedFilePath]
-      .filter(Boolean)
-      .filter((file) => fs.existsSync(file));
-
-    await Promise.all(
-      filesToDelete.map((file) =>
-        fs.promises.unlink(file).catch((err) =>
-          console.error(`Failed to delete temporary file ${file}:`, err)
-        )
-      )
-    );
+    // Cleanup
+    await fs.promises.rm(tempDir, { recursive: true, force: true });
   }
 }
-
 export async function structureSOAPNote(
   text,
   type,

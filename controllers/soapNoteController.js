@@ -42,6 +42,7 @@ export const createSOAPNote = catchAsync(async (req, res) => {
   let transcribedText;
 
   if (input_type === "audio") {
+    console.log(req.file);
     if (!req.file) {
       throw new AppError("Audio file is required for audio input", 400);
     }
