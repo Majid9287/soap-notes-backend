@@ -16,8 +16,8 @@ const soapNoteSchema = new mongoose.Schema(
     },
     patientName: {
       type: String,
-      set: encrypt,
-      get: decrypt,
+      // set: encrypt,
+      // get: decrypt,
     },
     therapistName: {
       type: String,

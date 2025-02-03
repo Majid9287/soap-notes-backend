@@ -95,15 +95,15 @@ export const createSOAPNote = catchAsync(async (req, res) => {
     icd10,
     cpt,
     ...soapNote,
-    // Add metadata for audio transcriptions
-    ...(input_type === "audio" && {
-      audioMetadata: {
-        originalFileName: req.file.originalname,
-        fileSize: req.file.size,
-        mimeType: req.file.mimetype,
-        transcribedAt: new Date(),
-      },
-    }),
+    // // Add metadata for audio transcriptions
+    // ...(input_type === "audio" && {
+    //   audioMetadata: {
+    //     originalFileName: req.file.originalname,
+    //     fileSize: req.file.size,
+    //     mimeType: req.file.mimetype,
+    //     transcribedAt: new Date(),
+    //   },
+    // }),
   });
 
   sendSuccessResponse(res, newSoapNote, "SOAP note created successfully", 201);
@@ -170,10 +170,7 @@ export const getSOAPNotes = catchAsync(async (req, res) => {
     .skip(skip)
     .limit(parseInt(limit));
 
-  // if (notes.length === 0) {
-  //   throw new AppError("No SOAP notes found", 404);
-    
-  // }
+
 
   const totalNotes = await SoapNote.countDocuments(filters);
 
@@ -214,4 +211,61 @@ export const deleteSOAPNote = catchAsync(async (req, res) => {
   await SoapNote.deleteOne({ _id: id });
 
   sendSuccessResponse(res, null, "SOAP note deleted successfully");
+});
+
+// Update SOAP Note
+export const updateSOAPNote = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const updates = req.body;
+
+  // Find the note and ensure it exists
+  const existingNote = await SoapNote.findById(id);
+
+  if (!existingNote) {
+    throw new AppError("SOAP note not found", 404);
+  }
+
+  // If text is provided, validate word count
+  if (updates.text) {
+    const wordCount = updates.text.trim().split(/\s+/).length;
+    if (wordCount < 15) {
+      throw new AppError("Not enough data in the text. Data must contain sufficient information about the session", 400);
+    }
+
+    // If text is updated, restructure the SOAP note
+    const structuredNote = await structureSOAPNote(
+      updates.text,
+      existingNote.type,
+      updates.patientName || existingNote.patientName,
+      updates.therapistName || existingNote.therapistName,
+      updates.date || existingNote.date,
+      updates.time || existingNote.time,
+      updates.icd10 || existingNote.icd10,
+      updates.cpt || existingNote.cpt
+    );
+
+    // Add structured fields to updates
+    updates.subjective = structuredNote.subjective;
+    updates.objective = structuredNote.objective;
+    updates.assessment = structuredNote.assessment;
+    updates.plan = structuredNote.plan;
+  }
+
+  // Validate date and time if either is provided
+  if ((updates.date && !updates.time) || (!updates.date && updates.time)) {
+    throw new AppError("Both date and time must be provided together", 400);
+  }
+
+  // Update the note with $set operator
+  const updatedNote = await SoapNote.findByIdAndUpdate(
+    id,
+    { $set: updates },
+    { 
+      new: true,
+      runValidators: true,
+      getters: true 
+    }
+  );
+
+  sendSuccessResponse(res, updatedNote, "SOAP note updated successfully");
 });
