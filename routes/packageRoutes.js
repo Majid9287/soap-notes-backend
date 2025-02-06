@@ -3,7 +3,9 @@ import * as packageController from '../controllers/packegeController.js';
 // import { protect, restrictTo } from '../middlewares/authMiddleware.js';
 
 const router = express.Router();
+import logger from '../middlewares/logger.js';
 
+router.use(logger);
 // // Protect all routes after this middleware
 // router.use(protect);
 

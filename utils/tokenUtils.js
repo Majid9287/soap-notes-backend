@@ -8,7 +8,7 @@ export const generateAccessToken = (userId, role, organizationId = null) => {
   return jwt.sign(
     { id: userId, role: role },
     process.env.ACCESS_TOKEN_SECRET,
-    { expiresIn: '30d' }
+    { expiresIn: '15m' }
   );
 };
 
@@ -26,7 +26,7 @@ export const generateApiKey = async (userId,packageId) => {
 
 // Generate Refresh Token
 export const generateRefreshToken = (userId) => {
-  return jwt.sign({ id: userId }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '30d' });
+  return jwt.sign({ id: userId }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '1d' });
 };
 
 // Verify Access Token

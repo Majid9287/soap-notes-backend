@@ -6,11 +6,7 @@ const securityLogSchema = new mongoose.Schema({
     severity: { type: String, enum: ['low', 'medium', 'high', 'critical'] },
     ipAddress: String,
     userAgent: String,
-    location: {
-        country: String,
-        city: String,
-        region: String
-    },
+   
     details: Object,
     timestamp: { type: Date, default: Date.now }
 });

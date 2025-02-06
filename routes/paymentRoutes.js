@@ -2,7 +2,9 @@ import express from 'express';
 import { createPaymentIntent, confirmPayment, getPackageDetails } from '../controllers/paymentController.js';
 import {protect} from '../middlewares/authMiddleware.js';
 const router = express.Router();
+import logger from '../middlewares/logger.js';
 
+router.use(logger);
 // Route to create a payment intent
 router.post('/create-payment-intent', protect, createPaymentIntent);
 

@@ -178,7 +178,7 @@ console.log(token,password)
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict',
-    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    maxAge: 24 * 60 * 60 * 1000 // 7 days
   });
 
   sendSuccessResponse(
@@ -251,7 +251,7 @@ export const updatePassword = catchAsync(async (req, res) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict',
-    maxAge: 7 * 24 * 60 * 60 * 1000
+    maxAge: 24 * 60 * 60 * 1000
   });
 
   sendSuccessResponse(
@@ -277,9 +277,10 @@ export const getUserProfile = catchAsync(async (req, res) => {
   sendSuccessResponse(res, { user }, "User profile retrieved successfully");
 });
 export const refreshToken = catchAsync(async (req, res) => {
-  const { refreshToken } = req.cookies;
-  if (!refreshToken) throw new AppError("No refresh token provided", 401);
+  const refreshToken = req.cookies.refreshToken ||req.headers["x-refresh-token"];
 
+  if (!refreshToken) throw new AppError("No refresh token provided", 401);
+   console.log("refresh call",refreshToken)
   const verifiedToken = verifyRefreshToken(refreshToken);
   if (!verifiedToken) throw new AppError("Invalid refresh token", 403);
 
@@ -295,7 +296,7 @@ export const refreshToken = catchAsync(async (req, res) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
-    maxAge: 30 * 24 * 60 * 60 * 1000,
+    maxAge: 15 * 60 * 1000,
   });
 
   sendSuccessResponse(

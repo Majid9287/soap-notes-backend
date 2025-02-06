@@ -7,7 +7,9 @@ import { soapInputValidationSchema } from "../validations/soapValidator.js";
 import audioUpload from "../middlewares/audioUploadMiddleware.js";
 import {protect} from '../middlewares/authMiddleware.js';
 const router = express.Router();
+import logger from '../middlewares/logger.js';
 
+router.use(logger);
 router.post("/:apiKey",audioUpload ,validateSchema(soapInputValidationSchema),rateLimiter,createSOAPNote);
 router.post("/", audioUpload,validateSchema(soapInputValidationSchema),rateLimiter,createSOAPNote);
 
